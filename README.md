@@ -54,3 +54,13 @@ content-type: application/json
 
 ![Swagger UI 01](/images/swagger-ui-01.png)
 ![Swagger UI 02](/images/swagger-ui-02.png)
+
+## Exploring the database directly
+
+Ran this in DB Browser for SQLite:
+
+```sql
+SELECT * FROM clients WHERE status = 'active';
+```
+![SQLite Database 01](/images/sqlite-database-01.png)
+It returned only the clients whose status is "active", read straight from `clients.db`, the same file the API serves from. Changing data in DB Browser showed up instantly through `GET /clients` with no restart, proving the API and the database share one source of truth.
