@@ -2,12 +2,56 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
+import sqlite3
+
+DB_NAME = "clients.db"
+
+
+def get_connection():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            company TEXT,
+            status TEXT,
+            project TEXT
+        )
+    """)
+
+    cursor.execute("SELECT COUNT(*) FROM clients")
+    count = cursor.fetchone()[0]
+
+    if count == 0:
+        cursor.executemany(
+            "INSERT INTO clients (name, company, status, project) VALUES (?, ?, ?, ?)",
+            [
+                ("Jane Dlamini", "Dlamini Consulting", "lead", "Website redesign"),
+                ("Sipho Khoza", "Khoza Logistics", "active", "SEO retainer"),
+                ("Aisha Patel", "Patel Interiors", "completed", "Portfolio site"),
+            ]
+        )
+
+    conn.commit()
+    conn.close()
+
 
 app = FastAPI(
     title="Client API",
-    description="A simple in-memory client management API built for learning.",
+    description="A simple client management API built for learning.",
     version="1.0"
 )
+
+init_db()
+
 
 clients = [
     {"id": 1, "name": "Jane Dlamini", "company": "Dlamini Consulting", "status": "lead", "project": "Website redesign"},
