@@ -93,32 +93,49 @@ def health_check():
 @app.get("/clients")
 def get_clients(status: Optional[str] = None, search: Optional[str] = None):
     """Returns clients, optionally filtered by status and/or a search term in the name or company."""
-    result = clients
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM clients"
+    params = []
+    conditions = []
 
     if status is not None:
-        result = [c for c in result if c["status"] == status]
+        conditions.append("status = ?")
+        params.append(status)
 
     if search is not None:
-        term = search.lower()
-        result = [
-            c for c in result
-            if term in c["name"].lower() or term in c["company"].lower()
-        ]
+        conditions.append("(LOWER(name) LIKE ? OR LOWER(company) LIKE ?)")
+        term = f"%{search.lower()}%"
+        params.append(term)
+        params.append(term)
 
-    return result
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
 
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
 
 @app.get("/clients/{client_id}")
 def get_client(client_id: int):
     """Returns a single client by id, or a 404 error if it doesn't exist."""
-    for client in clients:
-        if client["id"] == client_id:
-            return client
-    return JSONResponse(
-        status_code=404,
-        content={"error": f"Client {client_id} not found"}
-    )
+    conn = get_connection()
+    cursor = conn.cursor()
 
+    cursor.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Client not found"}
+        )
+
+    return dict(row)
 
 @app.get("/stats")
 def get_stats():
