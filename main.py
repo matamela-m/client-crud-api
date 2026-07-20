@@ -3,7 +3,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 
-app = FastAPI()
+app = FastAPI(
+    title="Client API",
+    description="A simple in-memory client management API built for learning.",
+    version="1.0"
+)
 
 clients = [
     {"id": 1, "name": "Jane Dlamini", "company": "Dlamini Consulting", "status": "lead", "project": "Website redesign"},
@@ -28,6 +32,7 @@ class ClientUpdate(BaseModel):
 
 @app.get("/")
 def read_root():
+    """Returns basic info about this API and its available endpoints."""
     return {
         "name": "Client API",
         "version": "1.0",
@@ -37,16 +42,31 @@ def read_root():
 
 @app.get("/health")
 def health_check():
+    """Health check endpoint used to confirm the server is running."""
     return {"status": "ok"}
 
 
 @app.get("/clients")
-def get_clients():
-    return clients
+def get_clients(status: Optional[str] = None, search: Optional[str] = None):
+    """Returns clients, optionally filtered by status and/or a search term in the name or company."""
+    result = clients
+
+    if status is not None:
+        result = [c for c in result if c["status"] == status]
+
+    if search is not None:
+        term = search.lower()
+        result = [
+            c for c in result
+            if term in c["name"].lower() or term in c["company"].lower()
+        ]
+
+    return result
 
 
 @app.get("/clients/{client_id}")
 def get_client(client_id: int):
+    """Returns a single client by id, or a 404 error if it doesn't exist."""
     for client in clients:
         if client["id"] == client_id:
             return client
@@ -56,8 +76,24 @@ def get_client(client_id: int):
     )
 
 
+@app.get("/stats")
+def get_stats():
+    """Returns a count of clients grouped by status."""
+    total = len(clients)
+    leads = sum(1 for c in clients if c["status"] == "lead")
+    active = sum(1 for c in clients if c["status"] == "active")
+    completed = sum(1 for c in clients if c["status"] == "completed")
+    return {
+        "total": total,
+        "leads": leads,
+        "active": active,
+        "completed": completed
+    }
+
+
 @app.post("/clients")
 def create_client(client: ClientCreate):
+    """Creates a new client from a name and returns it with a generated id."""
     if not client.name or not client.name.strip():
         return JSONResponse(
             status_code=400,
@@ -79,6 +115,7 @@ def create_client(client: ClientCreate):
 
 @app.put("/clients/{client_id}")
 def update_client(client_id: int, update: ClientUpdate):
+    """Updates a client's fields. Fields not sent are left unchanged."""
     for client in clients:
         if client["id"] == client_id:
             if update.name is not None:
@@ -104,6 +141,7 @@ def update_client(client_id: int, update: ClientUpdate):
 
 @app.delete("/clients/{client_id}")
 def delete_client(client_id: int):
+    """Deletes a client by id. Returns 204 with no body on success."""
     for i, client in enumerate(clients):
         if client["id"] == client_id:
             clients.pop(i)
