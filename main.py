@@ -19,6 +19,13 @@ class ClientCreate(BaseModel):
     project: Optional[str] = None
 
 
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    company: Optional[str] = None
+    status: Optional[str] = None
+    project: Optional[str] = None
+
+
 @app.get("/")
 def read_root():
     return {
@@ -68,3 +75,41 @@ def create_client(client: ClientCreate):
     clients.append(new_client)
 
     return JSONResponse(status_code=201, content=new_client)
+
+
+@app.put("/clients/{client_id}")
+def update_client(client_id: int, update: ClientUpdate):
+    for client in clients:
+        if client["id"] == client_id:
+            if update.name is not None:
+                if not update.name.strip():
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "name cannot be empty"}
+                    )
+                client["name"] = update.name
+            if update.company is not None:
+                client["company"] = update.company
+            if update.status is not None:
+                client["status"] = update.status
+            if update.project is not None:
+                client["project"] = update.project
+            return client
+
+    return JSONResponse(
+        status_code=404,
+        content={"error": f"Client {client_id} not found"}
+    )
+
+
+@app.delete("/clients/{client_id}")
+def delete_client(client_id: int):
+    for i, client in enumerate(clients):
+        if client["id"] == client_id:
+            clients.pop(i)
+            return JSONResponse(status_code=204, content=None)
+
+    return JSONResponse(
+        status_code=404,
+        content={"error": f"Client {client_id} not found"}
+    )
