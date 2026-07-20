@@ -53,13 +53,6 @@ app = FastAPI(
 init_db()
 
 
-clients = [
-    {"id": 1, "name": "Jane Dlamini", "company": "Dlamini Consulting", "status": "lead", "project": "Website redesign"},
-    {"id": 2, "name": "Sipho Khoza", "company": "Khoza Logistics", "status": "active", "project": "SEO retainer"},
-    {"id": 3, "name": "Aisha Patel", "company": "Patel Interiors", "status": "completed", "project": "Portfolio site"},
-]
-
-
 class ClientCreate(BaseModel):
     name: Optional[str] = None
     company: Optional[str] = None
@@ -119,6 +112,7 @@ def get_clients(status: Optional[str] = None, search: Optional[str] = None):
 
     return [dict(row) for row in rows]
 
+
 @app.get("/clients/{client_id}")
 def get_client(client_id: int):
     """Returns a single client by id, or a 404 error if it doesn't exist."""
@@ -137,19 +131,27 @@ def get_client(client_id: int):
 
     return dict(row)
 
+
 @app.get("/stats")
 def get_stats():
     """Returns a count of clients grouped by status."""
-    total = len(clients)
-    leads = sum(1 for c in clients if c["status"] == "lead")
-    active = sum(1 for c in clients if c["status"] == "active")
-    completed = sum(1 for c in clients if c["status"] == "completed")
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM clients")
+    total = cursor.fetchone()[0]
+
+    cursor.execute("SELECT status, COUNT(*) FROM clients GROUP BY status")
+    by_status = {row[0]: row[1] for row in cursor.fetchall()}
+    conn.close()
+
     return {
         "total": total,
-        "leads": leads,
-        "active": active,
-        "completed": completed
+        "leads": by_status.get("lead", 0),
+        "active": by_status.get("active", 0),
+        "completed": by_status.get("completed", 0),
     }
+
 
 @app.post("/clients")
 def create_client(client: ClientCreate):
@@ -182,41 +184,67 @@ def create_client(client: ClientCreate):
 
     return JSONResponse(status_code=201, content=dict(row))
 
+
 @app.put("/clients/{client_id}")
 def update_client(client_id: int, update: ClientUpdate):
     """Updates a client's fields. Fields not sent are left unchanged."""
-    for client in clients:
-        if client["id"] == client_id:
-            if update.name is not None:
-                if not update.name.strip():
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": "name cannot be empty"}
-                    )
-                client["name"] = update.name
-            if update.company is not None:
-                client["company"] = update.company
-            if update.status is not None:
-                client["status"] = update.status
-            if update.project is not None:
-                client["project"] = update.project
-            return client
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    return JSONResponse(
-        status_code=404,
-        content={"error": f"Client {client_id} not found"}
+    cursor.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+    row = cursor.fetchone()
+
+    if row is None:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Client not found"}
+        )
+
+    if update.name is not None and not update.name.strip():
+        conn.close()
+        return JSONResponse(
+            status_code=400,
+            content={"error": "name cannot be empty"}
+        )
+
+    current = dict(row)
+    new_name = update.name if update.name is not None else current["name"]
+    new_company = update.company if update.company is not None else current["company"]
+    new_status = update.status if update.status is not None else current["status"]
+    new_project = update.project if update.project is not None else current["project"]
+
+    cursor.execute(
+        "UPDATE clients SET name = ?, company = ?, status = ?, project = ? WHERE id = ?",
+        (new_name, new_company, new_status, new_project, client_id)
     )
+    conn.commit()
+
+    cursor.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+    updated = cursor.fetchone()
+    conn.close()
+
+    return dict(updated)
 
 
 @app.delete("/clients/{client_id}")
 def delete_client(client_id: int):
     """Deletes a client by id. Returns 204 with no body on success."""
-    for i, client in enumerate(clients):
-        if client["id"] == client_id:
-            clients.pop(i)
-            return JSONResponse(status_code=204, content=None)
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    return JSONResponse(
-        status_code=404,
-        content={"error": f"Client {client_id} not found"}
-    )
+    cursor.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+    row = cursor.fetchone()
+
+    if row is None:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Client not found"}
+        )
+
+    cursor.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+    conn.commit()
+    conn.close()
+
+    return JSONResponse(status_code=204, content=None)
