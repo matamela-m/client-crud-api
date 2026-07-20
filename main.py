@@ -151,7 +151,6 @@ def get_stats():
         "completed": completed
     }
 
-
 @app.post("/clients")
 def create_client(client: ClientCreate):
     """Creates a new client from a name and returns it with a generated id."""
@@ -161,18 +160,27 @@ def create_client(client: ClientCreate):
             content={"error": "name is required and cannot be empty"}
         )
 
-    next_id = max((c["id"] for c in clients), default=0) + 1
-    new_client = {
-        "id": next_id,
-        "name": client.name,
-        "company": client.company or "",
-        "status": client.status or "lead",
-        "project": client.project or "",
-    }
-    clients.append(new_client)
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    return JSONResponse(status_code=201, content=new_client)
+    cursor.execute(
+        "INSERT INTO clients (name, company, status, project) VALUES (?, ?, ?, ?)",
+        (
+            client.name,
+            client.company or "",
+            client.status or "lead",
+            client.project or "",
+        )
+    )
+    conn.commit()
 
+    new_id = cursor.lastrowid
+
+    cursor.execute("SELECT * FROM clients WHERE id = ?", (new_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    return JSONResponse(status_code=201, content=dict(row))
 
 @app.put("/clients/{client_id}")
 def update_client(client_id: int, update: ClientUpdate):
